@@ -1,0 +1,257 @@
+var android_dlopen_ext = Module.findExportByName(null, "android_dlopen_ext");
+if(android_dlopen_ext != null){
+    Interceptor.attach(android_dlopen_ext,{
+        onEnter: function(args){
+            var soName = args[0].readCString();
+            console.log(soName);
+        },
+        onLeave: function(retval){
+            Thread.sleep(5);
+        }
+    });
+}
+----
+Interceptor.attach(Module.findExportByName(null, "strstr"),{
+    onEnter: function(args){
+        this.frida = false;
+        var str1 = args[0].readCString();
+        var str2 = args[1].readCString();      
+        if(str1.indexOf("frida")!==-1  || str2.indexOf("frida")!==-1 ||
+          str1.indexOf("gum-js-loop")!==-1 || str2.indexOf("gum-js-loop")!==-1 ||
+          str1.indexOf("gmain")!==-1 || str2.indexOf("gmain")!==-1 ||
+          str1.indexOf("linjector")!==-1  || str2.indexOf("linjector")!==-1 ||
+          str1.indexOf("/data/local/tmp")!==-1  || str2.indexOf("/data/local/tmp")!==-1 ||
+          str1.indexOf("pool-frida")!==-1  || str2.indexOf("pool-frida")!==-1 ||
+          str1.indexOf("frida_agent_main")!==-1  || str2.indexOf("frida_agent_main")!==-1 ||
+          str1.indexOf("re.frida.server")!==-1  || str2.indexOf("re.frida.server")!==-1 ||
+          str1.indexOf("frida-agent")!==-1  || str2.indexOf("frida-agent")!==-1 ||
+          str1.indexOf("pool-spawner")!==-1  || str2.indexOf("pool-spawner")!==-1 ||
+          str1.indexOf("frida-agent-64.so")!==-1  || str2.indexOf("frida-agent-64.so")!==-1 ||
+          str1.indexOf("frida-agent-32.so")!==-1  || str2.indexOf("frida-agent-32.so")!==-1 ||
+          str1.indexOf("frida-helper-32.so")!==-1  || str2.indexOf("frida-helper-32.so")!==-1 ||
+          str1.indexOf("frida-helper-64.so")!==-1  || str2.indexOf("frida-helper-64.so")!==-1  ||
+          str1.indexOf("/sbin/.magisk")!==-1  || str2.indexOf("/sbin/.magisk")!==-1  ||
+          str1.indexOf("libriru")!==-1  || str2.indexOf("libriru")!==-1  ||
+          str1.indexOf("magisk")!==-1  || str2.indexOf("magisk")!==-1  
+                                         
+          ){          
+            this.frida = true;
+            console.log("strstr : ",str1,str2);
+        }
+    },
+    onLeave: function(retval){
+        if (this.frida) {
+            retval.replace(ptr("0x0"));
+        }
+    }
+});
+
+---
+Java.perform(function x() {
+    //定位StringBuilder,StringBuffer类
+    const stringbuilder = Java.use("java.lang.StringBuilder");
+    const stringbuffer = Java.use("java.lang.StringBuffer");
+
+    //定位方法
+    const toString = "toString";
+
+
+    // 使用log类和Exception类产生堆栈
+    var jAndroidLog = Java.use("android.util.Log");
+    var jException = Java.use("java.lang.Exception");
+
+    stringbuilder[toString].implementation = function () {
+        //执行原逻辑
+        const result = this[toString]();
+
+        if (result.indexOf("aaaaa") != -1) {
+            // 打印返回的字符串内容
+            console.log(result);
+            console.log(jAndroidLog.getStackTraceString(jException.$new()));
+        }
+        return result;
+    };
+
+    stringbuffer[toString].implementation = function () {
+        //执行原逻辑
+        const result = this[toString]();
+        if (result.indexOf("aaaaa") != -1) {
+            // 打印返回的字符串内容
+            console.log(result);
+            console.log(jAndroidLog.getStackTraceString(jException.$new()));
+        }
+        return result;
+    }
+
+});
+
+//
+
+import com.github.unidbg.Emulator;
+import com.github.unidbg.arm.backend.Backend;
+import com.github.unidbg.arm.backend.ReadHook;
+import com.github.unidbg.arm.backend.UnHook;
+import com.github.unidbg.arm.backend.WriteHook;
+import com.github.unidbg.arm.context.RegisterContext;
+
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.*;
+import java.util.function.ToIntFunction;
+
+
+public class StringLogger {
+    private final Emulator<?> emulator;
+    private final String outputPath;
+    private final List<byte[]> cache;
+    private final int cacheSize;
+    private final RegisterContext registerContext;
+    private final int windowSize;
+    private Map<Long, String> foundStrings = new HashMap<>();
+
+    public StringLogger(Emulator<?> emulator, String outputPath) {
+        this.emulator = emulator;
+        this.outputPath = outputPath;
+        this.cacheSize = 1024; // 1 MB
+        this.cache = new ArrayList<>();
+        this.registerContext = emulator.getContext();
+        this.windowSize = 0x100;
+        hookReadAndWrite();
+    }
+
+    public StringLogger(Emulator<?> emulator, String outputPath, int size) {
+        this.emulator = emulator;
+        this.outputPath = outputPath;
+        this.cacheSize = 1024; // 1 MB
+        this.cache = new ArrayList<>();
+        this.registerContext = emulator.getContext();
+        this.windowSize = size;
+        hookReadAndWrite();
+    }
+
+
+    private void hookReadAndWrite() {
+        WriteHook writeHook = new WriteHook() {
+            @Override
+            public void onAttach(UnHook unHook) {
+
+            }
+
+            @Override
+            public void detach() {
+
+            }
+
+            @Override
+            public void hook(Backend backend, long address, int size, long value, Object user) {
+                byte[] readBytes;
+
+                try {
+                    readBytes = emulator.getBackend().mem_read(address - (windowSize / 2), windowSize);
+                } catch (Exception e) {
+                    readBytes = new byte[16];
+                }
+                searchVisibleStringsInMemory(readBytes, address - (windowSize / 2));
+            }
+        };
+
+        ReadHook readHook = new ReadHook() {
+            @Override
+            public void onAttach(UnHook unHook) {
+
+            }
+
+            @Override
+            public void detach() {
+
+            }
+
+            @Override
+            public void hook(Backend backend, long address, int size, Object user) {
+                byte[] readBytes;
+
+                try {
+                    readBytes = emulator.getBackend().mem_read(address - (windowSize / 2), windowSize);
+                } catch (Exception e) {
+                    readBytes = new byte[16];
+                }
+                searchVisibleStringsInMemory(readBytes, address - (windowSize / 2));
+            }
+        };
+
+        emulator.getBackend().hook_add_new(writeHook, 1, 0, null);
+        emulator.getBackend().hook_add_new(readHook, 1, 0, null);
+    }
+
+    public void searchVisibleStringsInMemory(byte[] memory, long addr) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < memory.length; i++) {
+            byte b = memory[i];
+            if (b >= 32 && b <= 126) {
+                sb.append((char) b);
+            } else {
+                processVisibleString(sb, addr + i - sb.length());
+            }
+        }
+
+        processVisibleString(sb, addr + memory.length - sb.length());
+    }
+
+    private void processVisibleString(StringBuilder sb, long addr) {
+        if (sb.length() >= 5) {
+            String visibleString = sb.toString();
+            if (!foundStrings.containsKey(addr) || !foundStrings.get(addr).equals(visibleString)) {
+                foundStrings.put(addr, visibleString);
+                String result = "Address: 0x" + Long.toHexString(addr) + ", String: " + visibleString + "\n";
+                writeToFile(result.getBytes());
+            }
+        }
+        sb.setLength(0);
+    }
+
+
+    private void writeToFile(byte[] readBytes) {
+        cache.add(readBytes);
+
+        // 当缓存达到设定的大小时，将数据写入文件
+        if (getCacheSize() >= cacheSize) {
+            flushCacheToFile();
+        }
+    }
+
+    private void flushCacheToFile() {
+        Path outputPath = Paths.get(this.outputPath);
+        try (OutputStream outputStream = new BufferedOutputStream(Files.newOutputStream(outputPath, StandardOpenOption.CREATE, StandardOpenOption.APPEND))) {
+            for (byte[] bytes : cache) {
+                outputStream.write(bytes);
+            }
+            cache.clear();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private int getCacheSize() {
+        ToIntFunction<byte[]> lengthFunction = new ToIntFunction<byte[]>() {
+            @Override
+            public int applyAsInt(byte[] bytes) {
+                return bytes.length;
+            }
+        };
+
+        int sum = 0;
+        for (byte[] bytes : cache) {
+            sum += lengthFunction.applyAsInt(bytes);
+        }
+        return sum;
+    }
+
+}
+
+
+///
