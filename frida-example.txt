@@ -255,3 +255,82 @@ public class StringLogger {
 
 
 ///
+git config --global --unset http.proxy 
+git config --global --unset https.proxy  //git push 问题
+//
+
+Java.perform(function x() {
+    //定位StringBuilder,StringBuffer类
+    const stringbuilder = Java.use("java.lang.StringBuilder");
+    const stringbuffer = Java.use("java.lang.StringBuffer");
+
+    //定位方法
+    const toString = "toString";
+
+
+    // 使用log类和Exception类产生堆栈
+    var jAndroidLog = Java.use("android.util.Log");
+    var jException = Java.use("java.lang.Exception");
+
+    stringbuilder[toString].implementation = function () {
+        //执行原逻辑
+        const result = this[toString]();
+
+        if (result.indexOf("aaaaa") != -1) {
+            // 打印返回的字符串内容
+            console.log(result);
+            console.log(jAndroidLog.getStackTraceString(jException.$new()));
+        }
+        return result;
+    };
+
+    stringbuffer[toString].implementation = function () {
+        //执行原逻辑
+        const result = this[toString]();
+        if (result.indexOf("aaaaa") != -1) {
+            // 打印返回的字符串内容
+            console.log(result);
+            console.log(jAndroidLog.getStackTraceString(jException.$new()));
+        }
+        return result;
+    }
+
+});
+
+
+-----------
+function hookDlopen() {
+    var p_android_dlopen_ext = Module.findExportByName(null, "android_dlopen_ext");
+    if (p_android_dlopen_ext != null) {
+        // void* android_dlopen_ext(const char* filename, int flags, const android_dlextinfo* extinfo)
+        var android_dlopen_ext = new NativeFunction(p_android_dlopen_ext, "pointer", ["pointer", "int", "pointer"]);
+
+        Interceptor.replace(p_android_dlopen_ext, new NativeCallback(function (filename, flag, extinfo) {
+            if (filename.readCString().indexOf("libmsaoaidsec.so") != -1) {
+                return ptr(-1);
+            } else {
+                return android_dlopen_ext(filename, flag, extinfo);
+            }
+
+        }, "pointer", ["pointer", "int", "pointer"]));
+    }
+}
+
+hookDlopen();
+
+// frida spawn
+
+
+var android_dlopen_ext = Module.findExportByName(null, "android_dlopen_ext");
+if(android_dlopen_ext != null){
+    Interceptor.attach(android_dlopen_ext,{
+        onEnter: function(args){
+            var soName = args[0].readCString();
+            console.log(soName);
+        },
+        onLeave: function(retval){
+            Thread.sleep(5);
+        }
+    });
+}
+
