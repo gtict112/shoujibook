@@ -1,0 +1,22 @@
+Java.use("android.net.NetworkInfo").isConnected.implementation = function () {
+                return this.isConnected();
+            }
+
+            Java.use("android.net.NetworkInfo").getType.implementation = function () {
+                let result = this.getType();
+                if (result === Java.use("android.net.ConnectivityManager")['TYPE_WIFI'].value) {
+                    return Java.use("android.net.ConnectivityManager")['TYPE_MOBILE'].value;
+                }
+                return result;
+            }
+
+
+            Java.use("android.net.NetworkCapabilities").hasTransport.overload("int").implementation = function (type) {
+                if (type === Java.use("android.net.NetworkCapabilities")['TRANSPORT_VPN'].value) {
+                    return false;
+                }
+                let result = this.hasTransport(type);
+                console.warn(`hasTransport(${type}) - > ${result}`);
+                return false;
+                // return result;
+            };
