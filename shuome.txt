@@ -20,3 +20,5 @@ Java.use("android.net.NetworkInfo").isConnected.implementation = function () {
                 return false;
                 // return result;
             };
+
+proxydroid

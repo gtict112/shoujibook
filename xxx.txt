@@ -1,0 +1,18 @@
+ .\gradlew.bat app:dependencies
+let module = Process.findModuleByName("libhelloworld.so");
+// .rodata:0000000000000864 aHelloFromC     DCB "Hello from C++",0
+let targetAddress = module.base.add(0x16A0);
+Memory.protect(targetAddress, 0x10, '---');
+
+Process.setExceptionHandler(function (details)
+{
+    if(details.type=="access-violation"){
+        var operation = details.memory.operation;
+        var memAddr = details.memory.address;
+        console.log(DebugSymbol.fromAddress(details.context["pc"]))
+        console.log("operation type:", operation);
+        console.log("memory access addr:", memAddr);
+        Memory.protect(targetAddress, 0x10, 'rwx');
+    }
+    return true;
+});
