@@ -16,3 +16,32 @@ Process.setExceptionHandler(function (details)
     }
     return true;
 });
+
+
+
+Java.perform(() => {
+    var StringClass = Java.use('java.lang.String'); // 使用 Java String 类
+    var StandardCharsets = Java.use('java.nio.charset.StandardCharsets'); // 使用标准字符集类
+
+    var myMethodHook = function(args) {
+        try {
+            // 将 args[3] 转换为 byte[]
+            var byteArray = Java.cast(args[3], Java.array('byte')); // 强制转换为 byte[]
+
+            // 使用 String(byte[], Charset) 构造 UTF-8 字符串
+            var utf8String = StringClass.$new(byteArray, StandardCharsets.UTF_8.value);
+
+            // 打印结果
+            console.log("arg3:", utf8String);
+        } catch (e) {
+            console.error("Error decoding byte array:", e);
+        }
+    };
+
+    // 示例，hook 你的目标方法
+    var TargetClass = Java.use('your.target.ClassName'); // 替换为目标类
+    TargetClass.targetMethod.implementation = function(...args) {
+        myMethodHook(args);
+        return this.targetMethod.apply(this, args);
+    };
+});
